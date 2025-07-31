@@ -1,0 +1,9 @@
+wip
+target
+Cargo.lock
+
+/.idea/
+node_modules
+.git
+.claude
+CLAUDE.md
