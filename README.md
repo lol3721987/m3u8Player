@@ -40,13 +40,13 @@
 ## 安装方式
 
 1. 安装[Tampermonkey](https://www.tampermonkey.net/)浏览器扩展
-2. 点击[iePlayer-tampermonkey.user.js](iePlayer-tampermonkey.user.js)下载脚本
+2. 点击[m3u8Player-tampermonkey.user.js](m3u8Player-tampermonkey.user.js)下载脚本
 3. Tampermonkey会自动检测并提示安装
 4. 点击"安装"按钮完成安装
 
 或者直接访问以下链接安装：
 ```
-https://github.com/lol3721987/iePlayer/raw/main/iePlayer-tampermonkey.user.js
+https://github.com/lol3721987/m3u8Player/raw/main/m3u8Player-tampermonkey.user.js
 ```
 
 ## 使用说明
