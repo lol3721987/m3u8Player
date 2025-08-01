@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         m3u8Player
 // @namespace    https://github.com/lol3721987/m3u8Player
-// @version      1.0.0
+// @version      1.0.1
 // @license MIT
 // @description  支持17个视频源的M3U8视频播放器，基于HLS.js
 // @author       zjb
@@ -43,8 +43,8 @@
         // 视频源配置
         API_ENDPOINT: '/api.php/provide/vod',
         API_SITES_CONFIG: [
-			['卧龙资源', 'https://collect.wolongzy.cc', true],
-            ['淘片资源', 'https://www.taopianzy.com', true],
+			['卧龙资源', 'https://collect.wolongzy.cc', true, '/api.php/provide/vod/'],
+            ['淘片资源', 'https://www.taopianzy.com', true, '/cjapi/mc/vod/json.html'],
             ['LZI资源', 'https://cj.lziapi.com', true],
             ['黑木耳', 'https://json.heimuer.xyz', true],
             ['如意资源', 'https://cj.rycjapi.com', true],
@@ -53,7 +53,6 @@
             ['非凡影视', 'http://ffzy5.tv', true],
             ['360资源', 'https://360zy.com', true],
             ['iqiyi资源', 'https://www.iqiyizyapi.com', true],
-            ['卧龙资源', 'https://wolongzyw.com', true],
             ['极速资源', 'https://jszyapi.com', true],
             ['豆瓣资源', 'https://dbzy.tv', true],
             ['魔爪资源', 'https://mozhuazy.com', true],
@@ -77,10 +76,11 @@
         ],
 
         get API_SITES() {
-            return this.API_SITES_CONFIG.reduce((acc, [name, host, enabled], index) => {
+            return this.API_SITES_CONFIG.reduce((acc, [name, host, enabled, customEndpoint], index) => {
+                const endpoint = customEndpoint || this.API_ENDPOINT;
                 const key = new URL(host).hostname.split('.').slice(-2, -1)[0] || `site${index}`;
                 acc[key] = {
-                    api: `${host}${this.API_ENDPOINT}`,
+                    api: `${host}${endpoint}`,
                     name,
                     enabled,
                 };
@@ -2213,7 +2213,7 @@
 
     // 检测和注入M3U8播放按钮
     function injectM3U8PlayButtons() {
-                const m3u8Regex = /\b(https?:\/\/\S+\.m3u8(?:\?\S*)?)\b/g;
+                        const m3u8Regex = /(https?:\/\/[^\s"'`<>?#]*\.m3u8(?:\?[^\s"'`<>#]*)?(?:#[^\s"'`<>?]*)?)/gi;
 
         const createPlayButton = (url) => {
             const playButton = document.createElement('button');
@@ -2228,10 +2228,15 @@
         };
 
         // 处理链接
-        document.querySelectorAll('a[href*=".m3u8"]:not([data-ieplayer-injected])').forEach(link => {
-            if (!link.nextElementSibling || !link.nextElementSibling.classList.contains('iePlayer-m3u8-play-btn')) {
-                link.dataset.iePlayerInjected = 'true';
-                link.parentNode.insertBefore(createPlayButton(link.href), link.nextSibling);
+        document.querySelectorAll('a[href]:not([data-ieplayer-injected])').forEach(link => {
+            m3u8Regex.lastIndex = 0; // Reset regex state
+            const match = m3u8Regex.exec(link.href);
+            if (match) {
+                const m3u8Url = match[0]; // The first full match
+                if (!link.nextElementSibling || !link.nextElementSibling.classList.contains('iePlayer-m3u8-play-btn')) {
+                    link.dataset.iePlayerInjected = 'true';
+                    link.parentNode.insertBefore(createPlayButton(m3u8Url), link.nextSibling);
+                }
             }
         });
 
