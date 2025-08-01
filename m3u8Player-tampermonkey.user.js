@@ -43,6 +43,8 @@
         // 视频源配置
         API_ENDPOINT: '/api.php/provide/vod',
         API_SITES_CONFIG: [
+			['卧龙资源', 'https://collect.wolongzy.cc', true],
+            ['淘片资源', 'https://www.taopianzy.com', true],
             ['LZI资源', 'https://cj.lziapi.com', true],
             ['黑木耳', 'https://json.heimuer.xyz', true],
             ['如意资源', 'https://cj.rycjapi.com', true],
@@ -69,6 +71,9 @@
             ['lsb资源', 'https://apilsbzy1.com', false],
             ['黄色仓库', 'https://hsckzy.vip', false],
             ['玉兔资源', 'https://yutuzy10.com', false],
+            ['太子资源', 'https://apidanaizi.com', false],
+            ['黄8资源', 'https://hsckzy888.com', false],
+            ['搜V资源', 'https://api.souavzy.vip', false],
         ],
 
         get API_SITES() {
@@ -881,7 +886,7 @@
                 }
                 
                 // 验证是否为有效的M3U8链接
-                if (!url.toLowerCase().includes('.m3u8') && !url.toLowerCase().includes('m3u8')) {
+                if (!url.toLowerCase().split('?')[0].endsWith('.m3u8')) {
                     if (!confirm('输入的链接似乎不是M3U8链接，是否继续播放？')) {
                         return;
                     }
@@ -1360,8 +1365,7 @@
                             // 判断URL类型并选择播放方式
 
                             // 更准确的M3U8检测
-                            const isM3U8 = url.toLowerCase().includes('.m3u8') ||
-                                           url.toLowerCase().includes('m3u8') ||
+                            const isM3U8 = url.toLowerCase().split('?')[0].endsWith('.m3u8') ||
                                            url.toLowerCase().includes('hls');
 
                             // 修改播放逻辑：所有M3U8链接都用内置播放器
@@ -2209,7 +2213,7 @@
 
     // 检测和注入M3U8播放按钮
     function injectM3U8PlayButtons() {
-        const m3u8Regex = /(https?:\/\/[^\s]+\.m3u8[^\s]*)/g;
+                const m3u8Regex = /\b(https?:\/\/\S+\.m3u8(?:\?\S*)?)\b/g;
 
         const createPlayButton = (url) => {
             const playButton = document.createElement('button');
