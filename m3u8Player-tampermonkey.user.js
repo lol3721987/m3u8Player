@@ -93,11 +93,13 @@
             PAGE_SIZE: 10,
             MAX_RESULTS: 100, // 限制单次搜索返回的最大结果数
             SEARCH_TIMEOUT: 8000,
+            MAX_HISTORY_ITEMS: 50, // 最大历史记录数量
             STORAGE_KEYS: {
                 LAST_SEARCH: 'iePlayer_lastSearch',
                 SELECTED_SOURCES: 'iePlayer_selectedSources',
                 IS_AGGREGATED: 'iePlayer_isAggregated',
-                USER_SETTINGS: 'iePlayer_userSettings'
+                USER_SETTINGS: 'iePlayer_userSettings',
+                PLAY_HISTORY: 'iePlayer_playHistory'
             }
         },
 
@@ -167,6 +169,79 @@
         // 保存是否聚合搜索
         setIsAggregated(isAggregated) {
             this.set(ConfigModule.CONFIG.STORAGE_KEYS.IS_AGGREGATED, isAggregated);
+        },
+
+        // 获取播放历史
+        getPlayHistory() {
+            return this.get(ConfigModule.CONFIG.STORAGE_KEYS.PLAY_HISTORY, []);
+        },
+
+        // 保存播放历史
+        setPlayHistory(history) {
+            this.set(ConfigModule.CONFIG.STORAGE_KEYS.PLAY_HISTORY, history);
+        },
+
+        // 添加播放记录
+        addPlayHistory(videoData) {
+            const history = this.getPlayHistory();
+            const { id, title, url, source, episode, thumbnail, duration } = videoData;
+            
+            // 生成唯一ID
+            const recordId = id || `history_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            // 检查是否已存在相同的URL记录，存在则更新
+            const existingIndex = history.findIndex(item => item.url === url);
+            
+            const newRecord = {
+                id: recordId,
+                title: title || '未知视频',
+                url: url,
+                source: source || '未知来源',
+                episode: episode || '',
+                thumbnail: thumbnail || '',
+                duration: duration || 0,
+                playTime: Date.now(),
+                watchedPosition: 0
+            };
+
+            if (existingIndex >= 0) {
+                // 更新现有记录
+                history[existingIndex] = newRecord;
+            } else {
+                // 添加新记录到开头
+                history.unshift(newRecord);
+                
+                // 限制历史记录数量
+                const maxItems = ConfigModule.CONFIG.MAX_HISTORY_ITEMS;
+                if (history.length > maxItems) {
+                    history.splice(maxItems);
+                }
+            }
+
+            this.setPlayHistory(history);
+            return newRecord;
+        },
+
+        // 删除播放记录
+        removePlayHistory(id) {
+            const history = this.getPlayHistory();
+            const newHistory = history.filter(item => item.id !== id);
+            this.setPlayHistory(newHistory);
+        },
+
+        // 清空播放历史
+        clearPlayHistory() {
+            this.setPlayHistory([]);
+        },
+
+        // 更新观看进度
+        updateWatchProgress(id, position) {
+            const history = this.getPlayHistory();
+            const item = history.find(item => item.id === id);
+            if (item) {
+                item.watchedPosition = position;
+                this.setPlayHistory(history);
+            }
         }
     };
 
@@ -185,7 +260,8 @@
             isAggregatedSearch: false,
             isSearching: false,
             searchController: null,
-            allSearchResults: null // 用于存储所有搜索结果
+            allSearchResults: null, // 用于存储所有搜索结果
+            playHistory: [] // 播放历史记录
         },
 
         // 状态监听器
@@ -239,6 +315,7 @@
             // 从存储恢复状态
             this.set('isAggregatedSearch', StorageModule.getIsAggregated());
             this.set('selectedSources', StorageModule.getSelectedSources());
+            this.set('playHistory', StorageModule.getPlayHistory());
             // 初始化分页状态
             this.set('currentPage', 1);
             this.set('totalPages', 1);
@@ -573,6 +650,7 @@
                 <div class="iePlayer-tabs">
                     <button class="iePlayer-tab-btn active" data-tab="search">视频搜索</button>
                     <button class="iePlayer-tab-btn" data-tab="direct-play">链接播放</button>
+                    <button class="iePlayer-tab-btn" data-tab="history">播放历史</button>
                 </div>
                 <div class="iePlayer-panel-body">
                     <div class="iePlayer-tab-content active" id="iePlayer-tab-search">
@@ -621,6 +699,21 @@
                                 </div>
                                 <input type="text" class="iePlayer-m3u8-input" placeholder="请输入M3U8链接...">
                                 <button class="iePlayer-m3u8-btn">播放链接</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="iePlayer-tab-content" id="iePlayer-tab-history">
+                        <div class="iePlayer-section">
+                            <div class="iePlayer-history-header">
+                                <div class="iePlayer-history-title">📚 播放历史</div>
+                                <button class="iePlayer-clear-history-btn">清空历史</button>
+                            </div>
+                        </div>
+                        <div class="iePlayer-history-container">
+                            <div class="iePlayer-history-list"></div>
+                            <div class="iePlayer-history-empty" style="display: none;">
+                                暂无播放历史
                             </div>
                         </div>
                     </div>
@@ -797,6 +890,88 @@
                 searchInput.value = lastSearch;
                 // 不再自动触发搜索，让用户手动点击搜索按钮
             }
+        },
+
+        // 显示播放历史
+        displayPlayHistory() {
+            const searchPanel = StateModule.get('searchPanel');
+            if (!searchPanel) return;
+
+            const historyList = searchPanel.querySelector('.iePlayer-history-list');
+            const historyEmpty = searchPanel.querySelector('.iePlayer-history-empty');
+            
+            if (!historyList || !historyEmpty) return;
+
+            const history = StateModule.get('playHistory') || [];
+            
+            if (history.length === 0) {
+                historyList.style.display = 'none';
+                historyEmpty.style.display = 'block';
+                return;
+            }
+
+            historyList.style.display = 'block';
+            historyEmpty.style.display = 'none';
+            
+            // 使用DocumentFragment优化DOM操作
+            const fragment = document.createDocumentFragment();
+            historyList.innerHTML = '';
+
+            history.forEach(item => {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'iePlayer-history-item';
+                historyItem.innerHTML = `
+                    <div class="iePlayer-history-info">
+                        <div class="iePlayer-history-title">${this.escapeHtml(item.title)}</div>
+                        <div class="iePlayer-history-meta">
+                            ${item.source ? `<span class="iePlayer-history-source">${this.escapeHtml(item.source)}</span>` : ''}
+                            ${item.episode ? `<span class="iePlayer-history-episode">${this.escapeHtml(item.episode)}</span>` : ''}
+                            <span class="iePlayer-history-time">${this.formatTime(item.playTime)}</span>
+                        </div>
+                    </div>
+                    <div class="iePlayer-history-actions">
+                        <button class="iePlayer-history-play-btn" data-id="${item.id}" data-url="${item.url}" data-title="${item.title}" data-source="${item.source}" data-episode="${item.episode}">
+                            播放
+                        </button>
+                        <button class="iePlayer-history-delete-btn" data-id="${item.id}">
+                            删除
+                        </button>
+                    </div>
+                `;
+                fragment.appendChild(historyItem);
+            });
+
+            historyList.appendChild(fragment);
+        },
+
+        // 格式化时间显示
+        formatTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            
+            if (days === 0) {
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                if (hours === 0) {
+                    const minutes = Math.floor(diff / (1000 * 60));
+                    return minutes === 0 ? '刚刚' : `${minutes}分钟前`;
+                }
+                return `${hours}小时前`;
+            } else if (days === 1) {
+                return '昨天';
+            } else if (days < 7) {
+                return `${days}天前`;
+            } else {
+                return date.toLocaleDateString('zh-CN');
+            }
+        },
+
+        // HTML转义
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
     };
 
@@ -815,6 +990,7 @@
             const m3u8Btn = panel.querySelector('.iePlayer-m3u8-btn');
             const m3u8Input = panel.querySelector('.iePlayer-m3u8-input');
             const tabs = panel.querySelector('.iePlayer-tabs');
+            const clearHistoryBtn = panel.querySelector('.iePlayer-clear-history-btn');
 
             // 初始化视频源选择器
             UIModule.initializeSourceSelector();
@@ -833,6 +1009,11 @@
                         content.classList.remove('active');
                     });
                     panel.querySelector(`#iePlayer-tab-${tabName}`).classList.add('active');
+
+                    // 如果切换到历史记录Tab，加载历史数据
+                    if (tabName === 'history') {
+                        UIModule.displayPlayHistory();
+                    }
                 }
             });
 
@@ -893,7 +1074,7 @@
                 }
                 
                 // 使用播放器模块播放
-                PlayerModule.openVideoPlayer(url, 'M3U8视频播放');
+                PlayerModule.openVideoPlayer(url, 'M3U8视频播放', '直接播放', '');
             };
 
             // M3U8输入框回车事件
@@ -903,8 +1084,20 @@
                 }
             };
 
+            // 清空历史按钮事件
+            clearHistoryBtn.onclick = () => {
+                if (confirm('确定要清空所有播放历史吗？此操作不可恢复。')) {
+                    StorageModule.clearPlayHistory();
+                    StateModule.set('playHistory', []);
+                    UIModule.displayPlayHistory();
+                }
+            };
+
             // 拖拽功能
             this.makeDraggable(panel);
+
+            // 绑定历史记录事件
+            this.bindHistoryEvents();
         },
 
         // 执行搜索
@@ -1370,7 +1563,10 @@
 
                             // 修改播放逻辑：所有M3U8链接都用内置播放器
                             if (isM3U8) {
-                                PlayerModule.openVideoPlayer(url, title || '视频播放');
+                                const sourceKey = e.target.dataset.sourceKey;
+                                const source = ConfigModule.getSource(sourceKey);
+                                const episodeName = e.target.textContent.trim();
+                                PlayerModule.openVideoPlayer(url, title || '视频播放', source?.name || '未知源', episodeName);
                             } else {
                                 GM_openInTab(url, { active: true });
                             }
@@ -1414,13 +1610,85 @@
             // 保存新的事件处理器引用并绑定
             resultsDiv._iePlayerHandler = newHandler;
             resultsDiv.addEventListener('click', newHandler);
+        },
+
+        // 绑定历史记录事件
+        bindHistoryEvents() {
+            const searchPanel = StateModule.get('searchPanel');
+            if (!searchPanel) return;
+
+            const historyList = searchPanel.querySelector('.iePlayer-history-list');
+
+            // 移除之前可能存在的事件监听器
+            const oldHistoryHandler = historyList._iePlayerHistoryHandler;
+            if (oldHistoryHandler) {
+                historyList.removeEventListener('click', oldHistoryHandler);
+            }
+
+            // 创建新的事件处理器
+            const historyHandler = async (e) => {
+                try {
+                    // 播放按钮点击事件
+                    if (e.target.classList.contains('iePlayer-history-play-btn')) {
+                        const url = e.target.dataset.url;
+                        const title = e.target.dataset.title;
+                        const source = e.target.dataset.source;
+                        const episode = e.target.dataset.episode;
+
+                        // 验证URL
+                        if (!url || url === 'undefined' || url === 'null') {
+                            alert('播放链接无效');
+                            return;
+                        }
+
+                        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                            alert('播放链接格式无效');
+                            return;
+                        }
+
+                        try {
+                            PlayerModule.openVideoPlayer(url, title || '视频播放', source, episode);
+                        } catch (error) {
+                            alert(`播放失败: ${error.message}`);
+                        }
+                    }
+
+                    // 删除按钮点击事件
+                    if (e.target.classList.contains('iePlayer-history-delete-btn')) {
+                        const id = e.target.dataset.id;
+                        if (id && confirm('确定要删除这条播放记录吗？')) {
+                            StorageModule.removePlayHistory(id);
+                            StateModule.set('playHistory', StorageModule.getPlayHistory());
+                            UIModule.displayPlayHistory();
+                        }
+                    }
+                } catch (error) {
+                    console.error('历史记录事件处理出错:', error);
+                    // 静默处理错误，避免影响用户体验
+                }
+            };
+
+            // 保存新的事件处理器引用并绑定
+            historyList._iePlayerHistoryHandler = historyHandler;
+            historyList.addEventListener('click', historyHandler);
         }
     };
 
     // ===== 播放器模块 =====
     const PlayerModule = {
         // 创建视频播放器
-        openVideoPlayer(url, title) {
+        openVideoPlayer(url, title, source = '', episode = '') {
+            // 添加到历史记录
+            const videoData = {
+                id: null,
+                title: title,
+                url: url,
+                source: source,
+                episode: episode
+            };
+            const historyRecord = StorageModule.addPlayHistory(videoData);
+            StateModule.set('playHistory', StorageModule.getPlayHistory());
+
             // 创建播放器容器
             const playerContainer = document.createElement('div');
             playerContainer.className = 'iePlayer-player-container';
@@ -2204,6 +2472,94 @@
             }
             
             .iePlayer-player-close:hover { background-color: rgba(255,255,255,0.2); }
+
+            /* 历史记录样式 */
+            .iePlayer-history-header {
+                display: flex; justify-content: space-between; align-items: center;
+                margin-bottom: 15px; padding: 15px; background: #f8f9fa;
+                border-radius: 8px; border: 1px solid #e9ecef;
+            }
+
+            .iePlayer-history-title {
+                font-weight: 600; color: #495057; font-size: 14px;
+            }
+
+            .iePlayer-clear-history-btn {
+                padding: 6px 12px; border: 1px solid #dc3545; background: white;
+                color: #dc3545; border-radius: 4px; cursor: pointer;
+                font-size: 12px; transition: all 0.2s;
+            }
+
+            .iePlayer-clear-history-btn:hover {
+                background: #dc3545; color: white;
+            }
+
+            .iePlayer-history-container {
+                max-height: 400px; overflow-y: auto; padding: 5px;
+            }
+
+            .iePlayer-history-list {
+                display: block;
+            }
+
+            .iePlayer-history-item {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 15px; border-bottom: 1px solid #e9ecef;
+            }
+
+            .iePlayer-history-item:last-child {
+                border-bottom: none;
+            }
+
+            .iePlayer-history-info {
+                flex: 1;
+            }
+
+            .iePlayer-history-title {
+                font-size: 14px; font-weight: 500; color: #333; margin-bottom: 5px;
+            }
+
+            .iePlayer-history-meta {
+                font-size: 12px; color: #666;
+            }
+
+            .iePlayer-history-source, .iePlayer-history-episode {
+                background: #e9ecef; color: #495057; padding: 2px 6px;
+                border-radius: 10px; font-size: 11px; margin-right: 5px;
+            }
+
+            .iePlayer-history-time {
+                color: #868e96;
+            }
+
+            .iePlayer-history-actions {
+                display: flex; gap: 8px;
+            }
+
+            .iePlayer-history-play-btn, .iePlayer-history-delete-btn {
+                padding: 6px 12px; border-radius: 4px; cursor: pointer;
+                font-size: 12px; transition: all 0.2s;
+            }
+
+            .iePlayer-history-play-btn {
+                border: 1px solid #667eea; background: white; color: #667eea;
+            }
+
+            .iePlayer-history-play-btn:hover {
+                background: #667eea; color: white;
+            }
+
+            .iePlayer-history-delete-btn {
+                border: 1px solid #dc3545; background: white; color: #dc3545;
+            }
+
+            .iePlayer-history-delete-btn:hover {
+                background: #dc3545; color: white;
+            }
+
+            .iePlayer-history-empty {
+                text-align: center; padding: 40px; color: #666; font-size: 14px;
+            }
         `);
     }
 
@@ -2222,7 +2578,7 @@
             playButton.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                PlayerModule.openVideoPlayer(url, '视频播放');
+                PlayerModule.openVideoPlayer(url, '视频播放', '页面链接', '');
             };
             return playButton;
         };
